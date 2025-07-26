@@ -1,0 +1,16 @@
+tl t tr t t t t t tr t t t t t t tr
+l nw nw nw nw tl-bluemoon- nw nw nw nw nw tl-redmoon- nw nw nw br
+l nw nw nw nw nw nw br-blackhole- nw nw nw nw nw nw nw r
+b nw nw nw nw nw nw nw nw nw nw nw nw nw tr-greengear- r
+nw nw nw br-redstar- nw nw nw nw nw br-blueplanet- nw nw-nogoal-yellowrobot- nw nw nw r
+l nw nw nw nw nw tl-greenplanet- nw nw nw nw nw nw nw nw r
+l tr-yellowgear- nw nw nw-nogoal-greenrobot- nw nw nw nw nw nw nw br-yellowmoon- nw nw r
+l nw nw nw nw nw nw tl tr nw nw nw nw nw nw r
+l nw nw nw nw nw nw bl br nw nw nw nw nw nw r
+l tr-yellowstar- nw nw nw tl-blueplanet- nw nw nw nw nw nw nw nw nw br
+bl nw nw nw nw nw nw nw br-yellowplanet- nw nw nw-nogoal-redrobot- nw nw nw r
+l nw nw nw nw nw nw nw nw nw nw nw nw tl-bluestar- nw r
+l nw nw nw nw nw br-redmoon- nw nw nw nw nw nw nw nw r
+l nw nw nw nw nw nw nw nw bl-greenmoon- nw nw nw nw nw r
+l nw bl-greengear- nw nw nw nw nw nw nw nw nw nw nw tr-redgear- r
+l nw nw nw nw nw r nw nw-nogoal-bluerobot- nw nw nw r nw nw nw br
