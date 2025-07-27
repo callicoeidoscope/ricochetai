@@ -9,6 +9,8 @@
 // namespace
 using namespace std;
 
+const int WIDTH = 720, HEIGHT = 720;
+
 // creates a piece-type enum
 enum piece {
     redrobot, greenrobot, bluerobot, yellowrobot, blackrobot, norobot,
@@ -20,6 +22,10 @@ enum piece {
     redbouncetrbl, greenbouncetrbl, bluebouncetrbl, yellowbouncetrbl, nobounce,
     l, r, t, b, tl, tr, bl, br, nw,
     blackhole, nogoal
+};
+
+enum button {
+    moon, star, planet, gear, bounce, wall, robot, red, green, yellow, blue, black
 };
 
 // each block has a wall, goal, robot, and a bounce handled through the enum
@@ -62,6 +68,7 @@ class obj{
 
 // creates a map of textures and pieces, and pieces and objects
 map<piece, SDL_Texture*> textures;
+map<button, SDL_Texture*> button_textures;
 map<piece, obj> physicize;
 
 // translates a string to a block
@@ -140,20 +147,22 @@ block stob(string st)
     return block();
 }
 
+// defines where the legal squares are (NEEDS TO BE TWEAKED)
 void definelegal(int arrx[][16], int arry[][16], int rows)
 {
-    int legalx = 115, legaly = 115;
+    int legalx, legaly;
 
     for(int i = 0; i < 16; i++) {
-        legalx = 115 + (30 * i);
+        legalx = 116 + (30 * i);
         for(int j = 0; j < rows; j++) {
-            legaly = 115 + (30 * j);
+            legaly = 116 + (30 * j);
             arrx[j][i] = legalx;
             arry[j][i] = legaly;
         }
     }
 }
 
+// rounds object position to the nearest legal square
 void roundtolegal(int& x, int& y, int arrx[][16], int arry[][16], int rows, piece type, piece name)
 {
     int closestdist = 99999;
@@ -188,133 +197,176 @@ void roundtolegal(int& x, int& y, int arrx[][16], int arry[][16], int rows, piec
 // draws the board to the screen
 void drawtoscreen()
 {
+    // initializes SDL
     SDL_Init(SDL_INIT_VIDEO);
-    float w, h;
     
-    SDL_Window* window = SDL_CreateWindow("ricochet robots", 720, 720, SDL_WINDOW_RESIZABLE);
+    // creates the window and the renderer
+    SDL_Window* window = SDL_CreateWindow("ricochet robots", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
 
+    // creates textures for every piece in the game
     for(int i = 0; i < 42; i++){
-        // casts integer to optional
         auto texpieceopt = magic_enum::enum_cast<piece>(i);
         if(!texpieceopt.has_value()) {
             cerr << "error code 9: integers not casting correctly to pieces at index " << i << endl;
             continue;
         }
-
-        // casts optional to piece
         piece texpiece = texpieceopt.value();
-
-
         auto texname = magic_enum::enum_name(texpiece);
         if(!texname.size() > 0) {
             cerr << "error code 1: pieces not casting correctly to strings at index  " << i << endl;
             continue;
         }
-
         string texfile = "res/pieces/" + string(texname) + ".png";
-
         if(!texfile.size() > 0) {
             cerr << "error code 2: string copying error at index  " << i << endl;
             continue;
         }
-
         SDL_Texture* tex = IMG_LoadTexture(renderer, texfile.c_str());
-
         if(!tex) {
             cerr << "error code 3: texture not loading for " << texfile << " (" << SDL_GetError() << ")\n";
             continue;
         }
-
         textures[texpiece] = tex;
     }
 
+    // creates a texture for the board
     SDL_Texture* board = IMG_LoadTexture(renderer, "res/board.png");
 
-    SDL_GetTextureSize(textures[bluestar], &w, &h);
+    // creates textures for buttons (note to self: makie into a function since this is just a reused ver. of earlier code)
+    for(int i = 0; i < 12; i++) {
+        auto texbutt = magic_enum::enum_cast<button>(i);
+        if(!texbutt.has_value()) {
+            cerr << "error code 11: integers not casting correctly to pieces at index " << i << endl;
+            continue;
+        }
+        button texbutton = texbutt.value();
+        auto texname = magic_enum::enum_name(texbutton);
+        if(!texname.size() > 0) {
+            cerr << "error code 12: pieces not casting correctly to strings at index  " << i << endl;
+            continue;
+        }
+        string texfile = "res/buttons/add_" + string(texname) + ".png";
+        if(!texfile.size() > 0) {
+            cerr << "error code 13: string copying error at index  " << i << endl;
+            continue;
+        }
+        SDL_Texture* tex = IMG_LoadTexture(renderer, texfile.c_str());
+        if(!tex) {
+            cerr << "error code 14: texture not loading for " << texfile << " (" << SDL_GetError() << ")\n";
+            continue;
+        }
+        button_textures[texbutton] = tex;
+    }
 
-    w /= 16;
-    h /= 16;
-
-    SDL_FRect dsrc;
-    dsrc.x = (720 - w) / 2.0f;
-    dsrc.y = (720 - h) / 2.0f;
-    dsrc.w = (float)w;
-    dsrc.h = (float)h;
-
+    // creates a rectangle class for the gameboard
     SDL_FRect gameboard;
     gameboard.x = 120;
     gameboard.y = 120;
     gameboard.w = 480;
     gameboard.h = 480;
 
-    SDL_SetRenderDrawColor(renderer, 224, 226, 219, 255);
-    SDL_RenderFillRect(renderer, &gameboard);
-
-    SDL_RenderTexture(renderer, board, nullptr, &gameboard);
+    // creates a rectangle class for buttons
+    SDL_FRect buttontype;
+    buttontype.x = 55;
+    buttontype.y = HEIGHT - HEIGHT / 8 - 5;
+    buttontype.w = 128;
+    buttontype.h = 64;
     
+    // zeroes out all the variables used for rendering
     obj* currentobj = nullptr;
-    bool isr = true, isd = false;
+    bool is_running = true, mouse_is_down = false;
     float mx = 0, my = 0, dragoffsetx = 0, dragoffsety = 0;
 
-    while(isr) {
+    // this is the main rendering loop.
+    while(is_running) {
         SDL_Event event;
+
+        // redraw every frame there's an SDL event
         while(SDL_PollEvent(&event))
             switch(event.type) {
+
                 case SDL_EVENT_QUIT:
-                    isr = false; break;
+                    is_running = false; break;
+                
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                     SDL_GetMouseState(&mx, &my);
-                    for(auto& [piece, robot] : physicize) {
+
+                    for(auto& [piece, robot] : physicize) {  // goes through every piece currently onscreen to check if they're currently being dragged.
                     if(mx >= robot.x && mx <= robot.x + robot.w && my >= robot.y && my <= robot.y + robot.h) {
-                        isd = true;
+                        // tells program that the current object is what's being dragged
+                        mouse_is_down = true;
                         currentobj = &robot;
                         dragoffsetx = mx - robot.x;
                         dragoffsety = my - robot.y;
                         break;
                     }
                 } break;
+
                 case SDL_EVENT_MOUSE_BUTTON_UP:
-                    isd = false; 
-                    if(currentobj)
+                    mouse_is_down = false; 
+                    if(currentobj) // if there's an object being dragged, snap it to the legal grid
                         roundtolegal(currentobj->x, currentobj->y, legalx, legaly, 16, currentobj->t, currentobj->n);
                     break;
+                
                 case SDL_EVENT_MOUSE_MOTION:
-                    if(isd && currentobj) {
+                    if(mouse_is_down && currentobj) { // makes the current object trail along with the mouse
                         SDL_GetMouseState(&mx, &my);
                         currentobj->x = mx - dragoffsetx;
                         currentobj->y = my - dragoffsety;
                     } break;
             } 
+
+        // OUTPUTS X AND Y FOR DEBUGGING, SHOULD BE COMMENTED OUT
+        // cout << currentobj->x << " " << currentobj->y << endl;
     
-    SDL_SetRenderDrawColor(renderer, 47, 48, 52, 255);
-    SDL_RenderClear(renderer);
-    SDL_RenderFillRect(renderer, &gameboard);
-    SDL_RenderTexture(renderer, board, nullptr, &gameboard);
-    for(int i = 0; i < 42; i++) {
-        auto rwrap = magic_enum::enum_cast<piece>(i);
-        if(!rwrap.has_value()) {
-            cerr << "error code 10: failed to convert integer to piece on repetition " << i+1 << endl; continue;
+        // draws the gameboard
+        SDL_SetRenderDrawColor(renderer, 47, 48, 52, 255);
+        SDL_RenderClear(renderer);
+        SDL_RenderTexture(renderer, board, nullptr, &gameboard);
+        for(int i = 0; i < 7; i++) {
+            auto texbutt = magic_enum::enum_cast<button>(i);
+            if(!texbutt.has_value()) {
+                cerr << "error code 15: integers not casting correctly to pieces at index " << i << endl;
+                continue;
+            }
+            button texbutton = texbutt.value();
+            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &buttontype);
+            buttontype.x += 160;
+            if(i == 3) {
+                buttontype.y = HEIGHT / 8 - 60;
+                buttontype.x = 135;
+            }
         }
-        auto rval = rwrap.value();
-        obj& robot = physicize[rval];
-        if(i <= 5)
-            robot.t = norobot;
-        else if(i >= 22 && i <= 30)
-            robot.t = nobounce;
-        else if(i >= 31 && i <= 39)
-            robot.t = nw;
-        else
-            robot.t = nogoal;
-        robot.n = rval;
-        SDL_FRect rect = { (float)robot.x, (float)robot.y, (float)robot.w, (float)robot.h};
-        SDL_RenderTexture(renderer, textures[rval], nullptr, &rect);
-    }
+        buttontype.x = 55;
+        buttontype.y = HEIGHT - HEIGHT / 8 - 5;
+
+        // SPAWNS ALL PIECES IN FOR DEBUGGING, SHOULD BE COMMENTED OUT
+        for(int i = 0; i < 42; i++) {
+            auto rwrap = magic_enum::enum_cast<piece>(i);
+            if(!rwrap.has_value()) {
+                cerr << "error code 10: failed to convert integer to piece on repetition " << i+1 << endl; continue;
+            }
+            auto rval = rwrap.value();
+            obj& robot = physicize[rval];
+            if(i <= 5)
+                robot.t = norobot;
+            else if(i >= 22 && i <= 30)
+                robot.t = nobounce;
+            else if(i >= 31 && i <= 39)
+                robot.t = nw;
+            else
+                robot.t = nogoal;
+            robot.n = rval;
+            SDL_FRect rect = { (float)robot.x, (float)robot.y, (float)robot.w, (float)robot.h};
+            SDL_RenderTexture(renderer, textures[rval], nullptr, &rect);
+        }
 
     SDL_RenderPresent(renderer);
 
     }
 
+    // terminates the stuff
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
