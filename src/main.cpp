@@ -506,8 +506,12 @@ int main(int argc, char** argv)
 
 // to compile: g++ -Iinclude src/main.cpp -Llib -o main.exe -lmingw32 -lSDL3 -lSDL3_image
 
-// note: there are MANY problems with this, mostly that it doesn't clear out every block with no piece every frame
-// which leaves pieces where they oughtn't be in the output. also the output is too verbose, and the x and y are flipped.
-// additionally, A* hasn't been implemented, so all of its related things have been commented out.
-// the board is slightly too big for anything to look nice and mesh, so i need to draw a new sprite.
-// i also need to add the "add gamepiece" button, spawning all 42 at once is simply a debugging feature.
+/* here are the problems by order of How Bad They Are
+
+1. there's no A* implementation yet
+2. the add feature doesn't work
+3. file output is insanely broken
+4. there's no menu
+5. dynamic resizing hasn't been implemented
+
+*/
