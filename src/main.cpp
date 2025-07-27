@@ -66,10 +66,19 @@ class obj{
             : x(x), y(y), w(w), h(h), n(n), t(t)  { }
 };
 
+class button_selection {
+    public:
+        obj* type;
+        obj* colour;
+};
+
 // creates a map of textures and pieces, and pieces and objects
 map<piece, SDL_Texture*> textures;
 map<button, SDL_Texture*> button_textures;
 map<piece, obj> physicize;
+map<button, obj> buttonize;
+
+vector<piece> pieces_to_draw;
 
 // translates a string to a block
 block stob(string st)
@@ -272,15 +281,36 @@ void drawtoscreen()
     buttontype.y = HEIGHT - HEIGHT / 8 - 5;
     buttontype.w = 128;
     buttontype.h = 64;
+    SDL_FRect littlebuttontype;
+    littlebuttontype.x = 30;
+    littlebuttontype.y = 180;
+    littlebuttontype.w = 64;
+    littlebuttontype.h = 64;
     
     // zeroes out all the variables used for rendering
     obj* currentobj = nullptr;
+    button_selection* current_selection = nullptr;
     bool is_running = true, mouse_is_down = false;
     float mx = 0, my = 0, dragoffsetx = 0, dragoffsety = 0;
+
+    SDL_Texture* add = IMG_LoadTexture(renderer, "res/add.png");
 
     // this is the main rendering loop.
     while(is_running) {
         SDL_Event event;
+
+        littlebuttontype.x = WIDTH - 92;
+        littlebuttontype.y = HEIGHT / 2 - 32;
+
+        SDL_RenderTexture(renderer, add, nullptr, &littlebuttontype);
+        obj add_button;
+        add_button.x = littlebuttontype.x;
+        add_button.y = littlebuttontype.y;
+        add_button.w = littlebuttontype.w;
+        add_button.h = littlebuttontype.h;
+
+        littlebuttontype.x = 30;
+        littlebuttontype.y = 180;
 
         // redraw every frame there's an SDL event
         while(SDL_PollEvent(&event))
@@ -292,16 +322,72 @@ void drawtoscreen()
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                     SDL_GetMouseState(&mx, &my);
 
-                    for(auto& [piece, robot] : physicize) {  // goes through every piece currently onscreen to check if they're currently being dragged.
-                    if(mx >= robot.x && mx <= robot.x + robot.w && my >= robot.y && my <= robot.y + robot.h) {
+                    for(auto& [piece, gamepiece] : physicize) {  // goes through every piece currently onscreen to check if they're currently being dragged.
+                    if(mx >= gamepiece.x && mx <= gamepiece.x + gamepiece.w && my >= gamepiece.y && my <= gamepiece.y + gamepiece.h) {
                         // tells program that the current object is what's being dragged
                         mouse_is_down = true;
-                        currentobj = &robot;
-                        dragoffsetx = mx - robot.x;
-                        dragoffsety = my - robot.y;
+                        currentobj = &gamepiece;
+                        dragoffsetx = mx - gamepiece.x;
+                        dragoffsety = my - gamepiece.y;
                         break;
                     }
-                } break;
+                    }
+                    for(auto& [button, phys_button] : buttonize) {
+                        if(mx >= phys_button.x && mx <= phys_button.x + phys_button.w && my >= phys_button.y && my <= phys_button.y + phys_button.h) {
+                            mouse_is_down = true;
+                            if(button <= robot)
+                                current_selection->type = &phys_button;
+                            else
+                                current_selection->colour = &phys_button;
+                            break;
+                        }
+                    }
+                    if(mx >= add_button.x && mx <= add_button.x + add_button.w && my >= add_button.y && my <= add_button.y + add_button.h) {
+                        mouse_is_down = true;
+                        // sets default for when the user doesn't play nice
+                        button tenum = button::moon;
+                        button cenum = button::red;
+                        for (auto& [which_button, val] : buttonize) {
+                            if (val.x == current_selection->type->x && val.y == current_selection->type->y)
+                                tenum = which_button;
+                            if (val.x == current_selection->colour->x && val.y == current_selection->colour->y)
+                                cenum = which_button;
+                            }
+                        auto type = magic_enum::enum_name(tenum);
+                        auto colour = magic_enum::enum_name(cenum);
+                        string fullname;
+                        fullname.append(colour);
+                        fullname.append(type);
+
+                        switch(cenum) {
+                            case black:
+                                if(tenum != robot)
+                                    fullname = "blackhole";
+                                break;
+                        } switch(tenum) {
+                            // WALL ROTATION IMPLEMENTATION HASNT BEEN ADDED BY THE WAY!!!!!!!!!!!!!!!!!
+                            case wall:
+                                fullname = "bl"; break;
+                            // BOUNCE ROTATION IMPLEMENTATION HASNT BEEN ADDED BY THE WAY!!!!!!!!!!!!!!!
+                            case bounce:
+                                fullname.append("trbl");
+                        }
+                        auto piece_to_draw = magic_enum::enum_cast<::piece>(string_view(fullname)); 
+                        auto pval = piece_to_draw.value();
+                        obj& gamepiece = physicize[pval];
+                        if(pval <= 5)
+                            gamepiece.t = norobot;
+                        else if(pval >= 22 && pval <= 30)
+                            gamepiece.t = nobounce;
+                        else if(pval >= 31 && pval <= 39)
+                            gamepiece.t = nw;
+                        else
+                            gamepiece.t = nogoal;
+                        gamepiece.n = pval;
+                        SDL_FRect rect = { (float)gamepiece.x, (float)gamepiece.y, (float)gamepiece.w, (float)gamepiece.h};
+                        SDL_RenderTexture(renderer, textures[pval], nullptr, &rect);
+                    }
+                break;
 
                 case SDL_EVENT_MOUSE_BUTTON_UP:
                     mouse_is_down = false; 
@@ -319,7 +405,7 @@ void drawtoscreen()
 
         // OUTPUTS X AND Y FOR DEBUGGING, SHOULD BE COMMENTED OUT
         // cout << currentobj->x << " " << currentobj->y << endl;
-    
+
         // draws the gameboard
         SDL_SetRenderDrawColor(renderer, 47, 48, 52, 255);
         SDL_RenderClear(renderer);
@@ -340,27 +426,37 @@ void drawtoscreen()
         }
         buttontype.x = 55;
         buttontype.y = HEIGHT - HEIGHT / 8 - 5;
+        for(int i = 7; i < 12; i++) {
+            auto texbutt = magic_enum::enum_cast<button>(i);
+            if(!texbutt.has_value()) {
+                cerr << "error code 15: integers not casting correctly to pieces at index " << i << endl;
+                continue;
+            }
+            button texbutton = texbutt.value();
+            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &littlebuttontype);
+            littlebuttontype.y += 74;
+        }
 
         // SPAWNS ALL PIECES IN FOR DEBUGGING, SHOULD BE COMMENTED OUT
-        for(int i = 0; i < 42; i++) {
+        /* for(int i = 0; i < 42; i++) {
             auto rwrap = magic_enum::enum_cast<piece>(i);
             if(!rwrap.has_value()) {
                 cerr << "error code 10: failed to convert integer to piece on repetition " << i+1 << endl; continue;
             }
             auto rval = rwrap.value();
-            obj& robot = physicize[rval];
+            obj& gamepiece = physicize[rval];
             if(i <= 5)
-                robot.t = norobot;
+                gamepiece.t = norobot;
             else if(i >= 22 && i <= 30)
-                robot.t = nobounce;
+                gamepiece.t = nobounce;
             else if(i >= 31 && i <= 39)
-                robot.t = nw;
+                gamepiece.t = nw;
             else
-                robot.t = nogoal;
-            robot.n = rval;
-            SDL_FRect rect = { (float)robot.x, (float)robot.y, (float)robot.w, (float)robot.h};
+                gamepiece.t = nogoal;
+            gamepiece.n = rval;
+            SDL_FRect rect = { (float)gamepiece.x, (float)gamepiece.y, (float)gamepiece.w, (float)gamepiece.h};
             SDL_RenderTexture(renderer, textures[rval], nullptr, &rect);
-        }
+        } */
 
     SDL_RenderPresent(renderer);
 
