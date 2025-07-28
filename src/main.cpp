@@ -265,8 +265,9 @@ void launch_board_editor()
                             mouse_is_down = true;
                             if(button <= robot)
                                 current_selection->type = &phys_button;
-                            else
+                            else if(button < send)
                                 current_selection->colour = &phys_button;
+                            else { }
                             break;
                         }
                     }
@@ -302,7 +303,7 @@ void launch_board_editor()
                         }
 
                         // DEBUGGING
-                        cout << fullname << endl;
+                        // cout << fullname << endl;
 
                         auto piece_to_draw = magic_enum::enum_cast<::piece>(string_view(fullname)); 
                         if (!piece_to_draw.has_value()) {
@@ -321,6 +322,8 @@ void launch_board_editor()
                             gamepiece.t = nogoal;
                         gamepiece.n = pval;
                         pieces_to_draw.push_back(pval);
+                        gamepiece.x = WALLSPACE - 4;
+                        gamepiece.y = WALLSPACE - 4;
                     }
                 break;
 
@@ -394,8 +397,8 @@ void launch_board_editor()
         for(piece p : pieces_to_draw) {
             obj& gamepiece = physicize[p];
             SDL_FRect gamepiecerect;
-            gamepiecerect.x = WIDTH/2;
-            gamepiecerect.y = HEIGHT/2;
+            gamepiecerect.x = gamepiece.x;
+            gamepiecerect.y = gamepiece.y;
             gamepiecerect.w = gamepiece.w;
             gamepiecerect.h = gamepiece.h;
             SDL_RenderTexture(renderer, piece_textures[p], nullptr, &gamepiecerect);
