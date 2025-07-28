@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <variant>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_image.h>
 #include "magic_enum.hpp"
@@ -11,7 +12,7 @@
 using namespace std;
 
 // creates neccesary maps (this isn't in defenitions.h because i'm not comfortable enough with my understanding of #pragma)
-map<piece, SDL_Texture*> textures;
+map<piece, SDL_Texture*> piece_textures;
 map<button, SDL_Texture*> button_textures;
 map<piece, obj> physicize;
 map<button, obj> buttonize;
@@ -85,7 +86,7 @@ block stob(string input_string)
 }
 
 // defines an array of legal squares that pieces snap to
-void definelegal(int arrx[][16], int arry[][16], int rows)
+void define_legal(int arrx[][16], int arry[][16], int rows)
 {
     int legalx, legaly;
 
@@ -100,7 +101,7 @@ void definelegal(int arrx[][16], int arry[][16], int rows)
 }
 
 // rounds object position to the nearest legal square
-void roundtolegal(int& x, int& y, int arrx[][16], int arry[][16], int rows, piece type, piece name)
+void snap_to_legal(int& x, int& y, int arrx[][16], int arry[][16], int rows, piece type, piece name)
 {
     int closest_dist = ARBITRARILY_HIGH_NUMBER;
     int final_x = x, final_y = y;
@@ -134,89 +135,90 @@ void roundtolegal(int& x, int& y, int arrx[][16], int arry[][16], int rows, piec
     y = final_y;
 }
 
+void create_texture(bool is_a_button, int enum_number, SDL_Renderer* renderer) 
+{
+    if (is_a_button) {
+        auto texture_button_optional = magic_enum::enum_cast<button>(enum_number);
+        if(!texture_button_optional.has_value()) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        button textured_button = texture_button_optional.value();
+        auto textured_button_name = magic_enum::enum_name(textured_button);
+        if(!textured_button_name.size() > 0) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        string texture_filename;
+        if(enum_number < 12)
+            texture_filename = "res/buttons/add_" + string(textured_button_name) + ".png";
+        else
+            texture_filename = "res/buttons/" + string(textured_button_name) + ".png";
+        if(!texture_filename.size() > 0) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        SDL_Texture* actual_texture = IMG_LoadTexture(renderer, texture_filename.c_str());
+        if(!actual_texture) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        button_textures[textured_button] = actual_texture;
+    } else {
+        auto texture_piece_optional = magic_enum::enum_cast<piece>(enum_number);
+        if(!texture_piece_optional.has_value()) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        piece textured_piece = texture_piece_optional.value();
+        auto textured_button_name = magic_enum::enum_name(textured_piece);
+        if(!textured_button_name.size() > 0) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        string texture_filename = "res/pieces/" + string(textured_button_name) + ".png";
+        if(!texture_filename.size() > 0) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        SDL_Texture* actual_texture = IMG_LoadTexture(renderer, texture_filename.c_str());
+        if(!actual_texture) {
+            cerr << "something went wrong whilst creating textures.\n";
+            return;
+        }
+        piece_textures[textured_piece] = actual_texture;
+    }
+}
+
+SDL_FRect make_sdl_rectangle(float x, float y, float w, float h) {
+    SDL_FRect temporary_rect;
+    temporary_rect.x = x;
+    temporary_rect.y = y;
+    temporary_rect.w = w;
+    temporary_rect.h = h;
+    return temporary_rect;
+}
+
 // draws the board to the screen
 void launch_board_editor()
 {
-    // initializes SDL
+    // initializes graphics things
     SDL_Init(SDL_INIT_VIDEO);
-    
-    // creates the window and the renderer
     SDL_Window* window = SDL_CreateWindow("ricochet robots", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
 
-    // creates textures for every piece in the game
-    for(int i = 0; i < 42; i++){
-        auto texpieceopt = magic_enum::enum_cast<piece>(i);
-        if(!texpieceopt.has_value()) {
-            cerr << "error code 9: integers not casting correctly to pieces at index " << i << endl;
-            continue;
-        }
-        piece texpiece = texpieceopt.value();
-        auto texname = magic_enum::enum_name(texpiece);
-        if(!texname.size() > 0) {
-            cerr << "error code 1: pieces not casting correctly to strings at index  " << i << endl;
-            continue;
-        }
-        string texfile = "res/pieces/" + string(texname) + ".png";
-        if(!texfile.size() > 0) {
-            cerr << "error code 2: string copying error at index  " << i << endl;
-            continue;
-        }
-        SDL_Texture* tex = IMG_LoadTexture(renderer, texfile.c_str());
-        if(!tex) {
-            cerr << "error code 3: texture not loading for " << texfile << " (" << SDL_GetError() << ")\n";
-            continue;
-        }
-        textures[texpiece] = tex;
-    }
+    // creates the textures for all the pieces, buttons, and the board.
+    for(int i = 0; i < 42; i++)
+        create_texture(false, i, renderer);
+    for(int i = 0; i < 15; i++)
+        create_texture(true, i, renderer);
 
-    // creates a texture for the board
     SDL_Texture* board = IMG_LoadTexture(renderer, "res/board.png");
 
-    // creates textures for buttons (note to self: makie into a function since this is just a reused ver. of earlier code)
-    for(int i = 0; i < 12; i++) {
-        auto texbutt = magic_enum::enum_cast<button>(i);
-        if(!texbutt.has_value()) {
-            cerr << "error code 11: integers not casting correctly to pieces at index " << i << endl;
-            continue;
-        }
-        button texbutton = texbutt.value();
-        auto texname = magic_enum::enum_name(texbutton);
-        if(!texname.size() > 0) {
-            cerr << "error code 12: pieces not casting correctly to strings at index  " << i << endl;
-            continue;
-        }
-        string texfile = "res/buttons/add_" + string(texname) + ".png";
-        if(!texfile.size() > 0) {
-            cerr << "error code 13: string copying error at index  " << i << endl;
-            continue;
-        }
-        SDL_Texture* tex = IMG_LoadTexture(renderer, texfile.c_str());
-        if(!tex) {
-            cerr << "error code 14: texture not loading for " << texfile << " (" << SDL_GetError() << ")\n";
-            continue;
-        }
-        button_textures[texbutton] = tex;
-    }
-
-    // creates a rectangle class for the gameboard
-    SDL_FRect gameboard;
-    gameboard.x = 120;
-    gameboard.y = 120;
-    gameboard.w = 480;
-    gameboard.h = 480;
-
-    // creates a rectangle class for buttons
-    SDL_FRect buttontype;
-    buttontype.x = 55;
-    buttontype.y = HEIGHT - HEIGHT / 8 - 5;
-    buttontype.w = 128;
-    buttontype.h = 64;
-    SDL_FRect littlebuttontype;
-    littlebuttontype.x = 30;
-    littlebuttontype.y = 180;
-    littlebuttontype.w = 64;
-    littlebuttontype.h = 64;
+    // sets up the starting positions of the UI element generators, dynamically scaling with the screen (messily... i did the calculations by hand)
+    SDL_FRect gameboard = make_sdl_rectangle ( WALLSPACE, WALLSPACE, WIDTH * 2.0 / 3.0, HEIGHT * 2.0 / 3.0 );
+    SDL_FRect button_generator = make_sdl_rectangle ( WALLSPACE / 2, HEIGHT - WALLSPACE + (MACROPIXEL / 2), MACROPIXEL * 2, MACROPIXEL );
+    SDL_FRect little_button_generator = make_sdl_rectangle ( MACROPIXEL / 2, WALLSPACE, MACROPIXEL, MACROPIXEL);
     
     // zeroes out all the variables used for rendering
     obj* currentobj = nullptr;
@@ -233,10 +235,10 @@ void launch_board_editor()
         SDL_RenderClear(renderer);
 
         obj add_button;
-        add_button.x = WIDTH - 92;
-        add_button.y = HEIGHT / 2 - 32;
-        add_button.w = littlebuttontype.w;
-        add_button.h = littlebuttontype.h;
+        add_button.x = WIDTH - WALLSPACE + (MACROPIXEL / 2);
+        add_button.y = WALLSPACE + (2 * WALLSPACE) - (MACROPIXEL / 2);
+        add_button.w = little_button_generator.w;
+        add_button.h = little_button_generator.h;
 
         // redraw every frame there's an SDL event
         while(SDL_PollEvent(&event))
@@ -299,7 +301,14 @@ void launch_board_editor()
                                 fullname.append("trbl");
                         }
 
+                        // DEBUGGING
+                        cout << fullname << endl;
+
                         auto piece_to_draw = magic_enum::enum_cast<::piece>(string_view(fullname)); 
+                        if (!piece_to_draw.has_value()) {
+                            cerr << "could not cast from fullname: " << fullname << endl;
+                            break;
+                        }
                         auto pval = piece_to_draw.value();
                         obj& gamepiece = physicize[pval];
                         if(pval <= 5)
@@ -318,7 +327,7 @@ void launch_board_editor()
                 case SDL_EVENT_MOUSE_BUTTON_UP:
                     mouse_is_down = false; 
                     if(currentobj) // if there's an object being dragged, snap it to the legal grid
-                        roundtolegal(currentobj->x, currentobj->y, legalx, legaly, 16, currentobj->t, currentobj->n);
+                        snap_to_legal(currentobj->x, currentobj->y, legalx, legaly, 16, currentobj->t, currentobj->n);
                     break;
                 
                 case SDL_EVENT_MOUSE_MOTION:
@@ -332,16 +341,14 @@ void launch_board_editor()
         // OUTPUTS X AND Y FOR DEBUGGING, SHOULD BE COMMENTED OUT
         // cout << currentobj->x << " " << currentobj->y << endl;
 
-        littlebuttontype.x = WIDTH - 92;
-        littlebuttontype.y = HEIGHT / 2 - 32;
-
-        SDL_Texture* add_b = IMG_LoadTexture(renderer, "res/add.png");
-        SDL_RenderTexture(renderer, add_b, nullptr, &littlebuttontype);
-
-        littlebuttontype.x = 30;
-        littlebuttontype.y = 180;
+        little_button_generator.x = MACROPIXEL / 2;
+        little_button_generator.y = WALLSPACE;
 
         SDL_RenderTexture(renderer, board, nullptr, &gameboard);
+
+        button_generator.x = WALLSPACE / 2;
+        button_generator.y = HEIGHT - WALLSPACE + (MACROPIXEL / 2);
+
         for(int i = 0; i < 7; i++) {
             auto texbutt = magic_enum::enum_cast<button>(i);
             if(!texbutt.has_value()) {
@@ -349,31 +356,40 @@ void launch_board_editor()
                 continue;
             }
             button texbutton = texbutt.value();
-            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &buttontype);
+            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &button_generator);
 
-            buttonize[texbutton] = obj(buttontype.x, buttontype.y, buttontype.w, buttontype.h);
+            buttonize[texbutton] = obj(button_generator.x, button_generator.y, button_generator.w, button_generator.h);
 
-            buttontype.x += 160;
-            if(i == 3) {
-                buttontype.y = HEIGHT / 8 - 60;
-                buttontype.x = 135;
-            }
+            if(i < 3)
+                button_generator.x += (WALLSPACE + (MACROPIXEL * 2.0 / 3));
+            else if(i == 3) {
+                button_generator.y = MACROPIXEL / 2;
+                button_generator.x = WALLSPACE;
+            } else
+                button_generator.x += MACROPIXEL + WALLSPACE;
         }
-        buttontype.x = 55;
-        buttontype.y = HEIGHT - HEIGHT / 8 - 5;
-        for(int i = 7; i < 12; i++) {
+        button_generator.x = WALLSPACE;
+        button_generator.y = MACROPIXEL / 2;
+        for(int i = 7; i < 15; i++) {
             auto texbutt = magic_enum::enum_cast<button>(i);
             if(!texbutt.has_value()) {
                 cerr << "error code 15: integers not casting correctly to pieces at index " << i << endl;
                 continue;
             }
             button texbutton = texbutt.value();
-            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &littlebuttontype);
+            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &little_button_generator);
 
-            buttonize[texbutton] = obj(littlebuttontype.x, littlebuttontype.y, littlebuttontype.w, littlebuttontype.h);
+            buttonize[texbutton] = obj(little_button_generator.x, little_button_generator.y, little_button_generator.w, little_button_generator.h);
 
-            littlebuttontype.y += 74;
+            if(i < 11)
+                little_button_generator.y += (MACROPIXEL + MACROPIXEL / 2 + MACROPIXEL / 4);
+            else if (i == 11) {
+                little_button_generator.x = WIDTH - WALLSPACE + (MACROPIXEL / 2);
+                little_button_generator.y = WALLSPACE;
+            } else
+                little_button_generator.y += (2 * WALLSPACE) - (MACROPIXEL / 2);
         }
+
 
         for(piece p : pieces_to_draw) {
             obj& gamepiece = physicize[p];
@@ -382,7 +398,7 @@ void launch_board_editor()
             gamepiecerect.y = HEIGHT/2;
             gamepiecerect.w = gamepiece.w;
             gamepiecerect.h = gamepiece.h;
-            SDL_RenderTexture(renderer, textures[p], nullptr, &gamepiecerect);
+            SDL_RenderTexture(renderer, piece_textures[p], nullptr, &gamepiecerect);
         }
 
         // SPAWNS ALL PIECES IN FOR DEBUGGING, SHOULD BE COMMENTED OUT
@@ -437,7 +453,7 @@ int main(int argc, char** argv)
             board[j][i] = stob(cell);
     }   } */
 
-    definelegal(legalx, legaly, 16);
+    define_legal(legalx, legaly, 16);
     launch_board_editor();
 
     ofstream fon;
@@ -457,7 +473,7 @@ int main(int argc, char** argv)
 /* here are the problems by order of How Bad They Are
 
 1. there's no A* implementation yet
-2. the add feature doesn't work
+2. the drag feature doesn't work (+ some buttons are missing in add)
 3. file output is insanely broken
 4. there's no menu
 5. dynamic resizing hasn't been implemented

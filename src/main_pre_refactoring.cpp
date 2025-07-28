@@ -2,7 +2,6 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <variant>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_image.h>
 #include "magic_enum.hpp"
@@ -12,7 +11,7 @@
 using namespace std;
 
 // creates neccesary maps (this isn't in defenitions.h because i'm not comfortable enough with my understanding of #pragma)
-map<piece, SDL_Texture*> piece_textures;
+map<piece, SDL_Texture*> textures;
 map<button, SDL_Texture*> button_textures;
 map<piece, obj> physicize;
 map<button, obj> buttonize;
@@ -135,57 +134,6 @@ void roundtolegal(int& x, int& y, int arrx[][16], int arry[][16], int rows, piec
     y = final_y;
 }
 
-void create_texture(bool is_a_button, int enum_number, SDL_Renderer* renderer) 
-{
-    if (is_a_button) {
-        auto texture_button_optional = magic_enum::enum_cast<button>(enum_number);
-        if(!texture_button_optional.has_value()) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        button textured_button = texture_button_optional.value();
-        auto textured_button_name = magic_enum::enum_name(textured_button);
-        if(!textured_button_name.size() > 0) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        string texture_filename = "res/buttons/add_" + string(textured_button_name) + ".png";
-        if(!texture_filename.size() > 0) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        SDL_Texture* actual_texture = IMG_LoadTexture(renderer, texture_filename.c_str());
-        if(!actual_texture) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        button_textures[textured_button] = actual_texture;
-    } else {
-        auto texture_piece_optional = magic_enum::enum_cast<piece>(enum_number);
-        if(!texture_piece_optional.has_value()) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        piece textured_piece = texture_piece_optional.value();
-        auto textured_button_name = magic_enum::enum_name(textured_piece);
-        if(!textured_button_name.size() > 0) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        string texture_filename = "res/pieces" + string(textured_button_name) + ".png";
-        if(!texture_filename.size() > 0) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        SDL_Texture* actual_texture = IMG_LoadTexture(renderer, texture_filename.c_str());
-        if(!actual_texture) {
-            cerr << "something went wrong whilst creating textures.\n";
-            return;
-        }
-        piece_textures[textured_piece] = actual_texture;
-    }
-}
-
 // draws the board to the screen
 void launch_board_editor()
 {
@@ -198,15 +146,57 @@ void launch_board_editor()
 
     // creates textures for every piece in the game
     for(int i = 0; i < 42; i++){
-        create_texture(false, i, renderer);
+        auto texpieceopt = magic_enum::enum_cast<piece>(i);
+        if(!texpieceopt.has_value()) {
+            cerr << "error code 9: integers not casting correctly to pieces at index " << i << endl;
+            continue;
+        }
+        piece texpiece = texpieceopt.value();
+        auto texname = magic_enum::enum_name(texpiece);
+        if(!texname.size() > 0) {
+            cerr << "error code 1: pieces not casting correctly to strings at index  " << i << endl;
+            continue;
+        }
+        string texfile = "res/pieces/" + string(texname) + ".png";
+        if(!texfile.size() > 0) {
+            cerr << "error code 2: string copying error at index  " << i << endl;
+            continue;
+        }
+        SDL_Texture* tex = IMG_LoadTexture(renderer, texfile.c_str());
+        if(!tex) {
+            cerr << "error code 3: texture not loading for " << texfile << " (" << SDL_GetError() << ")\n";
+            continue;
+        }
+        textures[texpiece] = tex;
     }
 
     // creates a texture for the board
     SDL_Texture* board = IMG_LoadTexture(renderer, "res/board.png");
 
     // creates textures for buttons (note to self: makie into a function since this is just a reused ver. of earlier code)
-    for(int i = 0; i < 12; i++){
-        create_texture(true, i, renderer);
+    for(int i = 0; i < 12; i++) {
+        auto texbutt = magic_enum::enum_cast<button>(i);
+        if(!texbutt.has_value()) {
+            cerr << "error code 11: integers not casting correctly to pieces at index " << i << endl;
+            continue;
+        }
+        button texbutton = texbutt.value();
+        auto texname = magic_enum::enum_name(texbutton);
+        if(!texname.size() > 0) {
+            cerr << "error code 12: pieces not casting correctly to strings at index  " << i << endl;
+            continue;
+        }
+        string texfile = "res/buttons/add_" + string(texname) + ".png";
+        if(!texfile.size() > 0) {
+            cerr << "error code 13: string copying error at index  " << i << endl;
+            continue;
+        }
+        SDL_Texture* tex = IMG_LoadTexture(renderer, texfile.c_str());
+        if(!tex) {
+            cerr << "error code 14: texture not loading for " << texfile << " (" << SDL_GetError() << ")\n";
+            continue;
+        }
+        button_textures[texbutton] = tex;
     }
 
     // creates a rectangle class for the gameboard
@@ -392,7 +382,7 @@ void launch_board_editor()
             gamepiecerect.y = HEIGHT/2;
             gamepiecerect.w = gamepiece.w;
             gamepiecerect.h = gamepiece.h;
-            SDL_RenderTexture(renderer, piece_textures[p], nullptr, &gamepiecerect);
+            SDL_RenderTexture(renderer, textures[p], nullptr, &gamepiecerect);
         }
 
         // SPAWNS ALL PIECES IN FOR DEBUGGING, SHOULD BE COMMENTED OUT
@@ -467,7 +457,7 @@ int main(int argc, char** argv)
 /* here are the problems by order of How Bad They Are
 
 1. there's no A* implementation yet
-2. the add feature doesn't work
+2. adding the add feature broke the drag feature
 3. file output is insanely broken
 4. there's no menu
 5. dynamic resizing hasn't been implemented

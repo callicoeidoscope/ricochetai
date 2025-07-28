@@ -1,4 +1,6 @@
 const int WIDTH = 720, HEIGHT = 720, ARBITRARILY_HIGH_NUMBER = 999999;
+const int MACROPIXEL = WIDTH / 12;
+const int WALLSPACE = MACROPIXEL * 2;
 
 // creates a piece-type enum
 enum piece {
@@ -14,7 +16,7 @@ enum piece {
 };
 
 enum button {
-    moon, star, planet, gear, bounce, wall, robot, red, green, yellow, blue, black
+    moon, star, planet, gear, bounce, wall, robot, red, green, yellow, blue, black, send, add, rotate
 };
 
 // each block has a wall, goal, robot, and a bounce handled through the enum
