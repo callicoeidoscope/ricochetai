@@ -289,28 +289,23 @@ void drawtoscreen()
     
     // zeroes out all the variables used for rendering
     obj* currentobj = nullptr;
-    button_selection* current_selection = nullptr;
+    button_selection to_get_the_compiler_to_shut_up;
+    button_selection* current_selection = &to_get_the_compiler_to_shut_up;
     bool is_running = true, mouse_is_down = false;
     float mx = 0, my = 0, dragoffsetx = 0, dragoffsety = 0;
-
-    SDL_Texture* add = IMG_LoadTexture(renderer, "res/add.png");
 
     // this is the main rendering loop.
     while(is_running) {
         SDL_Event event;
 
-        littlebuttontype.x = WIDTH - 92;
-        littlebuttontype.y = HEIGHT / 2 - 32;
+        SDL_SetRenderDrawColor(renderer, 47, 48, 52, 255);
+        SDL_RenderClear(renderer);
 
-        SDL_RenderTexture(renderer, add, nullptr, &littlebuttontype);
         obj add_button;
-        add_button.x = littlebuttontype.x;
-        add_button.y = littlebuttontype.y;
+        add_button.x = WIDTH - 92;
+        add_button.y = HEIGHT / 2 - 32;
         add_button.w = littlebuttontype.w;
         add_button.h = littlebuttontype.h;
-
-        littlebuttontype.x = 30;
-        littlebuttontype.y = 180;
 
         // redraw every frame there's an SDL event
         while(SDL_PollEvent(&event))
@@ -372,6 +367,7 @@ void drawtoscreen()
                             case bounce:
                                 fullname.append("trbl");
                         }
+
                         auto piece_to_draw = magic_enum::enum_cast<::piece>(string_view(fullname)); 
                         auto pval = piece_to_draw.value();
                         obj& gamepiece = physicize[pval];
@@ -384,8 +380,7 @@ void drawtoscreen()
                         else
                             gamepiece.t = nogoal;
                         gamepiece.n = pval;
-                        SDL_FRect rect = { (float)gamepiece.x, (float)gamepiece.y, (float)gamepiece.w, (float)gamepiece.h};
-                        SDL_RenderTexture(renderer, textures[pval], nullptr, &rect);
+                        pieces_to_draw.push_back(pval);
                     }
                 break;
 
@@ -406,9 +401,15 @@ void drawtoscreen()
         // OUTPUTS X AND Y FOR DEBUGGING, SHOULD BE COMMENTED OUT
         // cout << currentobj->x << " " << currentobj->y << endl;
 
-        // draws the gameboard
-        SDL_SetRenderDrawColor(renderer, 47, 48, 52, 255);
-        SDL_RenderClear(renderer);
+        littlebuttontype.x = WIDTH - 92;
+        littlebuttontype.y = HEIGHT / 2 - 32;
+
+        SDL_Texture* add_b = IMG_LoadTexture(renderer, "res/add.png");
+        SDL_RenderTexture(renderer, add_b, nullptr, &littlebuttontype);
+
+        littlebuttontype.x = 30;
+        littlebuttontype.y = 180;
+
         SDL_RenderTexture(renderer, board, nullptr, &gameboard);
         for(int i = 0; i < 7; i++) {
             auto texbutt = magic_enum::enum_cast<button>(i);
@@ -418,6 +419,9 @@ void drawtoscreen()
             }
             button texbutton = texbutt.value();
             SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &buttontype);
+
+            buttonize[texbutton] = obj(buttontype.x, buttontype.y, buttontype.w, buttontype.h);
+
             buttontype.x += 160;
             if(i == 3) {
                 buttontype.y = HEIGHT / 8 - 60;
@@ -434,7 +438,20 @@ void drawtoscreen()
             }
             button texbutton = texbutt.value();
             SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &littlebuttontype);
+
+            buttonize[texbutton] = obj(littlebuttontype.x, littlebuttontype.y, littlebuttontype.w, littlebuttontype.h);
+
             littlebuttontype.y += 74;
+        }
+
+        for(piece p : pieces_to_draw) {
+            obj& gamepiece = physicize[p];
+            SDL_FRect gamepiecerect;
+            gamepiecerect.x = WIDTH/2;
+            gamepiecerect.y = HEIGHT/2;
+            gamepiecerect.w = gamepiece.w;
+            gamepiecerect.h = gamepiece.h;
+            SDL_RenderTexture(renderer, textures[p], nullptr, &gamepiecerect);
         }
 
         // SPAWNS ALL PIECES IN FOR DEBUGGING, SHOULD BE COMMENTED OUT
