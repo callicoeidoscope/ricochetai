@@ -1,4 +1,4 @@
-const int WIDTH = 720, HEIGHT = 720, ARBITRARILY_HIGH_NUMBER = 999999;
+const int WIDTH = 720, HEIGHT = 720, ARBITRARILY_HIGH_NUMBER = 999999, BOARD_DIMENSIONS = 16;
 const int MACROPIXEL = WIDTH / 12;
 const int WALLSPACE = MACROPIXEL * 2;
 
@@ -46,19 +46,29 @@ int legaly[16][16];
 class obj{
     public:
         int x, y, w, h;
-        piece n, t;
+        piece name;
+        button type;
         obj()
-            : x(120), y(120), w(38), h(38), n(nw), t(nw) { }
+            : x(120), y(120), w(38), h(38), name(nw), type(wall) { }
         obj(int x, int y)
-            : x(x), y(y), w(38), h(38), n(nw), t(nw)  { }
+            : x(x), y(y), w(38), h(38), name(nw), type(wall)  { }
         obj(int x, int y, int w, int h)
-            : x(x), y(y), w(w), h(h), n(nw), t(nw)  { }
-        obj(int x, int y, int w, int h, piece n, piece t)
-            : x(x), y(y), w(w), h(h), n(n), t(t)  { }
+            : x(x), y(y), w(w), h(h), name(nw), type(wall)  { }
+        obj(int x, int y, int w, int h, piece n, button t)
+            : x(x), y(y), w(w), h(h), name(n), type(t)  { }
 };
 
 class button_selection {
     public:
         obj* type;
         obj* colour;
+};
+
+class editor_state {
+    public:
+
+    bool is_running = true, mouse_is_down = false;
+    obj* current_object = nullptr;
+    button_selection* current_selection;
+    float mouse_x, mouse_y, drag_x, drag_y;
 };

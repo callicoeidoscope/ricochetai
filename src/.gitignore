@@ -1,0 +1,11 @@
+.vscode/
+include/
+lib/
+src/rewritingmain.exe
+src/main_pre_refactoring.cpp
+idk.exe
+main.exe
+MakeFile
+SDL3.dll
+SDL3_image.dll
+ricochetai.code-workspace

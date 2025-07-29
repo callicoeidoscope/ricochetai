@@ -19,6 +19,8 @@ map<button, obj> buttonize;
 
 vector<piece> pieces_to_draw;
 
+editor_state editor;
+
 // checks if a piece has value
 bool error_check(optional<piece> to_be_checked) {
     if(to_be_checked.has_value())
@@ -101,7 +103,7 @@ void define_legal(int arrx[][16], int arry[][16], int rows)
 }
 
 // rounds object position to the nearest legal square
-void snap_to_legal(int& x, int& y, int arrx[][16], int arry[][16], int rows, piece type, piece name)
+void snap_to_legal(int& x, int& y, int arrx[][16], int arry[][16], int rows, button type, piece name)
 {
     int closest_dist = ARBITRARILY_HIGH_NUMBER;
     int final_x = x, final_y = y;
@@ -199,6 +201,140 @@ SDL_FRect make_sdl_rectangle(float x, float y, float w, float h) {
     return temporary_rect;
 }
 
+bool mouse_is_touching (obj& object_to_compare) {
+    return (editor.mouse_x >= object_to_compare.x && editor.mouse_x <= object_to_compare.x + object_to_compare.w && editor.mouse_y >= object_to_compare.y && editor.mouse_y <= object_to_compare.y + object_to_compare.h);
+}
+
+void add_object(obj& type, obj& colour) {
+    // why is the default red moon? will wood, of course!
+    button type_enum = red, colour_enum = moon;
+
+    for (auto& [which_button, val] : buttonize) {
+        if(val.x == type.x && val.y == type.y)
+            type_enum = which_button;
+        if(val.x == colour.x && val.y == colour.y)
+            colour_enum = which_button;
+    }
+
+    auto type_string_view = magic_enum::enum_name(type_enum);
+    auto colour_string_view = magic_enum::enum_name(colour_enum);
+    string colour_string = string(colour_string_view), type_string = string(type_string_view);
+    string fullname = (colour_string + type_string);
+
+    // exceptions to the naming convention
+
+    switch (colour_enum) {
+        case black:
+            if (type_enum != robot)
+                fullname = "blackhole";
+            break;
+    } switch (type_enum) {
+        // IMPLEMENT ROTATION, THESE ARE DEFAULTS.
+        case wall:
+            fullname = "bl"; break;
+        case bounce:
+            fullname.append("trbl");
+    }
+
+    auto piece_to_draw = magic_enum::enum_cast<::piece>(string_view(fullname)); 
+    if (!piece_to_draw.has_value()) {
+        cerr << "could not cast from fullname: " << fullname << endl;
+        piece_to_draw = magic_enum::enum_cast<::piece>("nw");
+    }
+
+    auto pval = piece_to_draw.value();
+    obj& gamepiece = physicize[pval];
+    if(pval <= 5)
+        gamepiece.type = robot;
+    else if(pval >= 22 && pval <= 30)
+        gamepiece.type = bounce;
+    else if(pval >= 31 && pval <= 39)
+        gamepiece.type = wall;
+    else
+        gamepiece.type = moon; // just pretend this says goal :3
+    gamepiece.name = pval;
+    pieces_to_draw.push_back(pval);
+    gamepiece.x = WALLSPACE - 4;
+    gamepiece.y = WALLSPACE - 4;
+}
+
+void handle_mouse_down (SDL_FRect& little_button_generator) {
+    SDL_GetMouseState(&editor.mouse_x, &editor.mouse_y);
+    editor.mouse_is_down = true;
+
+    obj add_button;
+    add_button.x = WIDTH - WALLSPACE + (MACROPIXEL / 2);
+    add_button.y = WALLSPACE + (2 * WALLSPACE) - (MACROPIXEL / 2);
+    add_button.w = little_button_generator.w;
+    add_button.h = little_button_generator.h;
+
+    for (auto& [piece, gamepiece] : physicize) {
+        if (mouse_is_touching(gamepiece)) {
+            editor.current_object = &gamepiece;
+            editor.drag_x =  editor.mouse_x - gamepiece.x;
+            editor.drag_y =  editor.mouse_y - gamepiece.y;
+            break;
+        }
+    } for (auto& [button, phys_button] : buttonize) {
+        if (mouse_is_touching(phys_button)) {
+            if (button <= robot)
+                editor.current_selection->type = &phys_button;
+            else if (button < send)
+                editor.current_selection->colour = &phys_button;
+            break;
+        }
+    } if (mouse_is_touching(add_button))
+        add_object(*editor.current_selection->type, *editor.current_selection->colour);
+}
+
+void handle_events(SDL_Event& event, SDL_FRect& little_button_generator) {
+    switch(event.type) {
+        case SDL_EVENT_QUIT:
+            editor.is_running = false; break;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            handle_mouse_down(little_button_generator); break;
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            editor.mouse_is_down = false;
+            if(editor.current_object)
+                snap_to_legal(editor.current_object->x, editor.current_object->y, legalx, legaly, BOARD_DIMENSIONS, editor.current_object->type, editor.current_object->name);
+            break;
+        case SDL_EVENT_MOUSE_MOTION:
+            if(editor.mouse_is_down && editor.current_object) { // makes the current object trail along with the mouse
+                SDL_GetMouseState(&editor.mouse_x, &editor.mouse_y);
+                editor.current_object->x = editor.mouse_x - editor.drag_x;
+                editor.current_object->y = editor.mouse_y - editor.drag_y;
+            } break;
+            
+    }
+}
+
+void generate_ui_element(char axis, SDL_FRect& generator, int enum_index, int condition, SDL_Renderer* renderer, double execute_before, double execute_whilst_y, double execute_whilst_x, double execute_after) {
+    auto texbutt = magic_enum::enum_cast<button>(enum_index);
+    if(!texbutt.has_value()) {
+        cerr << "GENERATE_UI_ELEMENT: integers not casting correctly to pieces at index " << enum_index << endl;
+        return;
+    }
+    button texbutton = texbutt.value();
+    SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &generator);
+
+    buttonize[texbutton] = obj(generator.x, generator.y, generator.w, generator.h);
+
+    if(enum_index < condition) {
+        if(axis == 'x')
+            generator.x += execute_before;
+        else
+            generator.y += execute_before;
+    } else if(enum_index == condition) {
+        generator.y = execute_whilst_y;
+        generator.x = execute_whilst_x;;
+    } else {
+        if(axis == 'x')
+            generator.x += execute_after;
+        else
+            generator.y += execute_after;
+    }
+}
+
 // draws the board to the screen
 void launch_board_editor()
 {
@@ -215,184 +351,36 @@ void launch_board_editor()
 
     SDL_Texture* board = IMG_LoadTexture(renderer, "res/board.png");
 
-    // sets up the starting positions of the UI element generators, dynamically scaling with the screen (messily... i did the calculations by hand)
     SDL_FRect gameboard = make_sdl_rectangle ( WALLSPACE, WALLSPACE, WIDTH * 2.0 / 3.0, HEIGHT * 2.0 / 3.0 );
     SDL_FRect button_generator = make_sdl_rectangle ( WALLSPACE / 2, HEIGHT - WALLSPACE + (MACROPIXEL / 2), MACROPIXEL * 2, MACROPIXEL );
     SDL_FRect little_button_generator = make_sdl_rectangle ( MACROPIXEL / 2, WALLSPACE, MACROPIXEL, MACROPIXEL);
-    
-    // zeroes out all the variables used for rendering
-    obj* currentobj = nullptr;
-    button_selection to_get_the_compiler_to_shut_up;
-    button_selection* current_selection = &to_get_the_compiler_to_shut_up;
-    bool is_running = true, mouse_is_down = false;
-    float mx = 0, my = 0, dragoffsetx = 0, dragoffsety = 0;
+
+    editor.is_running = true, editor.mouse_is_down = false;
+    button_selection bugfix;
+    editor.current_selection = &bugfix;
 
     // this is the main rendering loop.
-    while(is_running) {
+    while(editor.is_running) {
         SDL_Event event;
 
-        SDL_SetRenderDrawColor(renderer, 47, 48, 52, 255);
-        SDL_RenderClear(renderer);
-
-        obj add_button;
-        add_button.x = WIDTH - WALLSPACE + (MACROPIXEL / 2);
-        add_button.y = WALLSPACE + (2 * WALLSPACE) - (MACROPIXEL / 2);
-        add_button.w = little_button_generator.w;
-        add_button.h = little_button_generator.h;
-
-        // redraw every frame there's an SDL event
         while(SDL_PollEvent(&event))
-            switch(event.type) {
-
-                case SDL_EVENT_QUIT:
-                    is_running = false; break;
-                
-                case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                    SDL_GetMouseState(&mx, &my);
-
-                    for(auto& [piece, gamepiece] : physicize) {  // goes through every piece currently onscreen to check if they're currently being dragged.
-                    if(mx >= gamepiece.x && mx <= gamepiece.x + gamepiece.w && my >= gamepiece.y && my <= gamepiece.y + gamepiece.h) {
-                        // tells program that the current object is what's being dragged
-                        mouse_is_down = true;
-                        currentobj = &gamepiece;
-                        dragoffsetx = mx - gamepiece.x;
-                        dragoffsety = my - gamepiece.y;
-                        break;
-                    }
-                    }
-                    for(auto& [button, phys_button] : buttonize) {
-                        if(mx >= phys_button.x && mx <= phys_button.x + phys_button.w && my >= phys_button.y && my <= phys_button.y + phys_button.h) {
-                            mouse_is_down = true;
-                            if(button <= robot)
-                                current_selection->type = &phys_button;
-                            else if(button < send)
-                                current_selection->colour = &phys_button;
-                            else { }
-                            break;
-                        }
-                    }
-                    if(mx >= add_button.x && mx <= add_button.x + add_button.w && my >= add_button.y && my <= add_button.y + add_button.h) {
-                        mouse_is_down = true;
-                        // sets default for when the user doesn't play nice
-                        button tenum = button::moon;
-                        button cenum = button::red;
-                        for (auto& [which_button, val] : buttonize) {
-                            if (val.x == current_selection->type->x && val.y == current_selection->type->y)
-                                tenum = which_button;
-                            if (val.x == current_selection->colour->x && val.y == current_selection->colour->y)
-                                cenum = which_button;
-                            }
-                        auto type = magic_enum::enum_name(tenum);
-                        auto colour = magic_enum::enum_name(cenum);
-                        string fullname;
-                        fullname.append(colour);
-                        fullname.append(type);
-
-                        switch(cenum) {
-                            case black:
-                                if(tenum != robot)
-                                    fullname = "blackhole";
-                                break;
-                        } switch(tenum) {
-                            // WALL ROTATION IMPLEMENTATION HASNT BEEN ADDED BY THE WAY!!!!!!!!!!!!!!!!!
-                            case wall:
-                                fullname = "bl"; break;
-                            // BOUNCE ROTATION IMPLEMENTATION HASNT BEEN ADDED BY THE WAY!!!!!!!!!!!!!!!
-                            case bounce:
-                                fullname.append("trbl");
-                        }
-
-                        // DEBUGGING
-                        // cout << fullname << endl;
-
-                        auto piece_to_draw = magic_enum::enum_cast<::piece>(string_view(fullname)); 
-                        if (!piece_to_draw.has_value()) {
-                            cerr << "could not cast from fullname: " << fullname << endl;
-                            break;
-                        }
-                        auto pval = piece_to_draw.value();
-                        obj& gamepiece = physicize[pval];
-                        if(pval <= 5)
-                            gamepiece.t = norobot;
-                        else if(pval >= 22 && pval <= 30)
-                            gamepiece.t = nobounce;
-                        else if(pval >= 31 && pval <= 39)
-                            gamepiece.t = nw;
-                        else
-                            gamepiece.t = nogoal;
-                        gamepiece.n = pval;
-                        pieces_to_draw.push_back(pval);
-                        gamepiece.x = WALLSPACE - 4;
-                        gamepiece.y = WALLSPACE - 4;
-                    }
-                break;
-
-                case SDL_EVENT_MOUSE_BUTTON_UP:
-                    mouse_is_down = false; 
-                    if(currentobj) // if there's an object being dragged, snap it to the legal grid
-                        snap_to_legal(currentobj->x, currentobj->y, legalx, legaly, 16, currentobj->t, currentobj->n);
-                    break;
-                
-                case SDL_EVENT_MOUSE_MOTION:
-                    if(mouse_is_down && currentobj) { // makes the current object trail along with the mouse
-                        SDL_GetMouseState(&mx, &my);
-                        currentobj->x = mx - dragoffsetx;
-                        currentobj->y = my - dragoffsety;
-                    } break;
-            } 
-
-        // OUTPUTS X AND Y FOR DEBUGGING, SHOULD BE COMMENTED OUT
-        // cout << currentobj->x << " " << currentobj->y << endl;
+            handle_events(event, little_button_generator);
 
         little_button_generator.x = MACROPIXEL / 2;
         little_button_generator.y = WALLSPACE;
+
+        SDL_SetRenderDrawColor(renderer, 47, 48, 52, 255);
+        SDL_RenderClear(renderer);
 
         SDL_RenderTexture(renderer, board, nullptr, &gameboard);
 
         button_generator.x = WALLSPACE / 2;
         button_generator.y = HEIGHT - WALLSPACE + (MACROPIXEL / 2);
 
-        for(int i = 0; i < 7; i++) {
-            auto texbutt = magic_enum::enum_cast<button>(i);
-            if(!texbutt.has_value()) {
-                cerr << "error code 15: integers not casting correctly to pieces at index " << i << endl;
-                continue;
-            }
-            button texbutton = texbutt.value();
-            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &button_generator);
-
-            buttonize[texbutton] = obj(button_generator.x, button_generator.y, button_generator.w, button_generator.h);
-
-            if(i < 3)
-                button_generator.x += (WALLSPACE + (MACROPIXEL * 2.0 / 3));
-            else if(i == 3) {
-                button_generator.y = MACROPIXEL / 2;
-                button_generator.x = WALLSPACE;
-            } else
-                button_generator.x += MACROPIXEL + WALLSPACE;
-        }
-        button_generator.x = WALLSPACE;
-        button_generator.y = MACROPIXEL / 2;
-        for(int i = 7; i < 15; i++) {
-            auto texbutt = magic_enum::enum_cast<button>(i);
-            if(!texbutt.has_value()) {
-                cerr << "error code 15: integers not casting correctly to pieces at index " << i << endl;
-                continue;
-            }
-            button texbutton = texbutt.value();
-            SDL_RenderTexture(renderer, button_textures[texbutton], nullptr, &little_button_generator);
-
-            buttonize[texbutton] = obj(little_button_generator.x, little_button_generator.y, little_button_generator.w, little_button_generator.h);
-
-            if(i < 11)
-                little_button_generator.y += (MACROPIXEL + MACROPIXEL / 2 + MACROPIXEL / 4);
-            else if (i == 11) {
-                little_button_generator.x = WIDTH - WALLSPACE + (MACROPIXEL / 2);
-                little_button_generator.y = WALLSPACE;
-            } else
-                little_button_generator.y += (2 * WALLSPACE) - (MACROPIXEL / 2);
-        }
-
+        for(int i = 0; i < 7; i++)
+            generate_ui_element('x', button_generator, i, 3, renderer, (WALLSPACE + (MACROPIXEL * 2.0 / 3)), MACROPIXEL / 2, WALLSPACE, MACROPIXEL + WALLSPACE);
+        for(int i = 7; i < 15; i++)
+            generate_ui_element('y', little_button_generator, i, 11, renderer, (MACROPIXEL + MACROPIXEL / 2 + MACROPIXEL / 4), WALLSPACE, WIDTH - WALLSPACE + (MACROPIXEL / 2), (2 * WALLSPACE) - (MACROPIXEL / 2));
 
         for(piece p : pieces_to_draw) {
             obj& gamepiece = physicize[p];
@@ -404,58 +392,16 @@ void launch_board_editor()
             SDL_RenderTexture(renderer, piece_textures[p], nullptr, &gamepiecerect);
         }
 
-        // SPAWNS ALL PIECES IN FOR DEBUGGING, SHOULD BE COMMENTED OUT
-        /* for(int i = 0; i < 42; i++) {
-            auto rwrap = magic_enum::enum_cast<piece>(i);
-            if(!rwrap.has_value()) {
-                cerr << "error code 10: failed to convert integer to piece on repetition " << i+1 << endl; continue;
-            }
-            auto rval = rwrap.value();
-            obj& gamepiece = physicize[rval];
-            if(i <= 5)
-                gamepiece.t = norobot;
-            else if(i >= 22 && i <= 30)
-                gamepiece.t = nobounce;
-            else if(i >= 31 && i <= 39)
-                gamepiece.t = nw;
-            else
-                gamepiece.t = nogoal;
-            gamepiece.n = rval;
-            SDL_FRect rect = { (float)gamepiece.x, (float)gamepiece.y, (float)gamepiece.w, (float)gamepiece.h};
-            SDL_RenderTexture(renderer, textures[rval], nullptr, &rect);
-        } */
-
     SDL_RenderPresent(renderer);
 
     }
 
-    // terminates the stuff
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
-/* KEEP WORKING ON THIS.
-
-class state {
-    int rx, ry, gx, gy, bx, by, yx, yy, moves;
-    vector<string> history;
-};
-
-*/
-
 int main(int argc, char** argv)
 {
-    // THIS IS FOR READING IN CODE AND SHOULD BE IMPLEMENTED ON THE OTHER END OF THE MODIFIED A*.
-    /* ifstream fin;
-    string cell;
-    fin.open("ricochet_input.txt");
-
-    for (int i = 0; i < 16; i++) {
-        for (int j = 0; j < 16; j++) {
-            fin >> cell;
-            board[j][i] = stob(cell);
-    }   } */
-
     define_legal(legalx, legaly, 16);
     launch_board_editor();
 
@@ -476,9 +422,9 @@ int main(int argc, char** argv)
 /* here are the problems by order of How Bad They Are
 
 1. there's no A* implementation yet
-2. the drag feature doesn't work (+ some buttons are missing in add)
+2. no rotation functionality
 3. file output is insanely broken
 4. there's no menu
-5. dynamic resizing hasn't been implemented
+5. implement highlight of selection in the UI
 
 */
