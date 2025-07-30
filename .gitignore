@@ -1,7 +1,7 @@
 .vscode/
 include/
 lib/
-src/rewritingmain.exe
+src/rewritingmain.txt
 src/main_pre_refactoring.cpp
 idk.exe
 main.exe

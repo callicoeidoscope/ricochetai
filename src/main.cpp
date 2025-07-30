@@ -18,6 +18,7 @@ map<piece, obj> physicize;
 map<button, obj> buttonize;
 
 vector<piece> pieces_to_draw;
+vector<obj> duplicatables_to_draw;
 
 editor_state editor;
 
@@ -229,11 +230,15 @@ void add_object(obj& type, obj& colour) {
                 fullname = "blackhole";
             break;
     } switch (type_enum) {
-        // IMPLEMENT ROTATION, THESE ARE DEFAULTS.
         case wall:
-            fullname = "bl"; break;
+            fullname = magic_enum::enum_name(editor.rotation); break;
         case bounce:
-            fullname.append("trbl");
+            switch (editor.rotation) {
+                case t:
+                    fullname.append("trbl"); break;
+                default:
+                    fullname.append("tlbr");
+            } break;
     }
 
     auto piece_to_draw = magic_enum::enum_cast<::piece>(string_view(fullname)); 
@@ -244,15 +249,25 @@ void add_object(obj& type, obj& colour) {
 
     auto pval = piece_to_draw.value();
     obj& gamepiece = physicize[pval];
+    bool is_duplicatable = false;
     if(pval <= 5)
         gamepiece.type = robot;
-    else if(pval >= 22 && pval <= 30)
+    else if(pval >= 22 && pval <= 30) {
         gamepiece.type = bounce;
-    else if(pval >= 31 && pval <= 39)
+        is_duplicatable = true;
+    } else if(pval >= 31 && pval <= 39){
         gamepiece.type = wall;
-    else
+        is_duplicatable = true;
+    } else
         gamepiece.type = moon; // just pretend this says goal :3
     gamepiece.name = pval;
+    if(is_duplicatable) {
+        obj duplicatable_gamepiece = gamepiece;
+        duplicatable_gamepiece.x = WALLSPACE - 4;
+        duplicatable_gamepiece.y = WALLSPACE - 4;
+        duplicatables_to_draw.push_back(duplicatable_gamepiece);
+        return;
+    }
     pieces_to_draw.push_back(pval);
     gamepiece.x = WALLSPACE - 4;
     gamepiece.y = WALLSPACE - 4;
@@ -268,6 +283,12 @@ void handle_mouse_down (SDL_FRect& little_button_generator) {
     add_button.w = little_button_generator.w;
     add_button.h = little_button_generator.h;
 
+    obj rotate_button = add_button;
+    rotate_button.y += (2 * WALLSPACE) - (MACROPIXEL / 2);
+
+    obj send_button = add_button;
+    send_button.y -= (2 * WALLSPACE) - (MACROPIXEL / 2);
+
     for (auto& [piece, gamepiece] : physicize) {
         if (mouse_is_touching(gamepiece)) {
             editor.current_object = &gamepiece;
@@ -275,7 +296,15 @@ void handle_mouse_down (SDL_FRect& little_button_generator) {
             editor.drag_y =  editor.mouse_y - gamepiece.y;
             break;
         }
-    } for (auto& [button, phys_button] : buttonize) {
+    } for (obj& gamepiece : duplicatables_to_draw)  {
+        if (mouse_is_touching(gamepiece)) {
+            editor.current_object = &gamepiece;
+            editor.drag_x =  editor.mouse_x - gamepiece.x;
+            editor.drag_y =  editor.mouse_y - gamepiece.y;
+            break;
+        }
+    }
+    for (auto& [button, phys_button] : buttonize) {
         if (mouse_is_touching(phys_button)) {
             if (button <= robot)
                 editor.current_selection->type = &phys_button;
@@ -285,6 +314,15 @@ void handle_mouse_down (SDL_FRect& little_button_generator) {
         }
     } if (mouse_is_touching(add_button))
         add_object(*editor.current_selection->type, *editor.current_selection->colour);
+    if (mouse_is_touching(rotate_button)) {
+        switch (editor.rotation) {
+            case l:
+                editor.rotation = t; break;
+            case t:
+                editor.rotation = l; break;
+        }
+    } /* if (mouse_is_touching(send_button))
+        // astar(); */
 }
 
 void handle_events(SDL_Event& event, SDL_FRect& little_button_generator) {
@@ -355,7 +393,7 @@ void launch_board_editor()
     SDL_FRect button_generator = make_sdl_rectangle ( WALLSPACE / 2, HEIGHT - WALLSPACE + (MACROPIXEL / 2), MACROPIXEL * 2, MACROPIXEL );
     SDL_FRect little_button_generator = make_sdl_rectangle ( MACROPIXEL / 2, WALLSPACE, MACROPIXEL, MACROPIXEL);
 
-    editor.is_running = true, editor.mouse_is_down = false;
+    editor.is_running = true, editor.mouse_is_down = false, editor.rotation = l;
     button_selection bugfix;
     editor.current_selection = &bugfix;
 
@@ -382,6 +420,7 @@ void launch_board_editor()
         for(int i = 7; i < 15; i++)
             generate_ui_element('y', little_button_generator, i, 11, renderer, (MACROPIXEL + MACROPIXEL / 2 + MACROPIXEL / 4), WALLSPACE, WIDTH - WALLSPACE + (MACROPIXEL / 2), (2 * WALLSPACE) - (MACROPIXEL / 2));
 
+        // i cant be bothered to refactor this into not duplicating code rn, diy future me
         for(piece p : pieces_to_draw) {
             obj& gamepiece = physicize[p];
             SDL_FRect gamepiecerect;
@@ -390,7 +429,14 @@ void launch_board_editor()
             gamepiecerect.w = gamepiece.w;
             gamepiecerect.h = gamepiece.h;
             SDL_RenderTexture(renderer, piece_textures[p], nullptr, &gamepiecerect);
-        }
+        } for(obj& gamepiece : duplicatables_to_draw) {
+            SDL_FRect gamepiecerect;
+            gamepiecerect.x = gamepiece.x;
+            gamepiecerect.y = gamepiece.y;
+            gamepiecerect.w = gamepiece.w;
+            gamepiecerect.h = gamepiece.h;
+            SDL_RenderTexture(renderer, piece_textures[gamepiece.name], nullptr, &gamepiecerect);
+        } 
 
     SDL_RenderPresent(renderer);
 
@@ -421,10 +467,14 @@ int main(int argc, char** argv)
 
 /* here are the problems by order of How Bad They Are
 
-1. there's no A* implementation yet
-2. no rotation functionality
-3. file output is insanely broken
-4. there's no menu
-5. implement highlight of selection in the UI
+- no a*
+- render order is entirely wrong
+- current object never deselects, making for weird dragging
+- file output wrong format (and do i even need file outout?)
+- the wall textures mess up dragging, look bad, and also maybe tax performance
+- no ui highlighting
+- no delete button
+- black holes don't get dragged idk why
+- no menu system
 
 */

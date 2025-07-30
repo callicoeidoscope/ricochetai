@@ -71,4 +71,5 @@ class editor_state {
     obj* current_object = nullptr;
     button_selection* current_selection;
     float mouse_x, mouse_y, drag_x, drag_y;
+    piece rotation;
 };
